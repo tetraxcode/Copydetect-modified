@@ -79,10 +79,13 @@ class CodeFingerprint:
         if fp is not None:
             code = fp.read()
         else:
-            with open(file, encoding="utf-8") as code_fp:
-                code = code_fp.read()
+            # with open(file, encoding="utf-8") as code_fp:
+            #     code = code_fp.read()
+            # code = file.split('\n')
+            code = file
+            # print(code)
         if filter:
-            filtered_code, offsets = filter_code(code, file, language)
+            filtered_code, offsets = filter_code(code, "ex1.cpp", language)
         else:
             filtered_code, offsets = code, np.array([])
         hashes, idx = get_document_fingerprints(filtered_code, k, win_size,
@@ -421,6 +424,7 @@ class CopyDetector:
                 file_list.extend(files)
 
         # convert to a set to remove duplicates, then back to a list
+        # print(file_list)
         return list(set(file_list))
 
     def add_file(self, filename, type="testref"):
@@ -472,6 +476,7 @@ class CopyDetector:
         for code_f in tqdm(file_list, bar_format= '   {l_bar}{bar}{r_bar}',
                            disable=self.silent):
             if code_f not in self.file_data:
+                # print(self.file_data)
                 try:
                     self.file_data[code_f] = CodeFingerprint(
                         code_f, self.noise_t, self.window_size,
@@ -530,10 +535,11 @@ class CopyDetector:
                     overlap, (sim1, sim2), (slices1, slices2) = compare_files(
                         self.file_data[test_f], self.file_data[ref_f])
                     comparisons[(test_f, ref_f)] = (i, j)
-
+                
                 self.similarity_matrix[i,j] = np.array([sim1, sim2])
                 self.slice_matrix[i][j] = [slices1, slices2]
                 self.token_overlap_matrix[i,j] = overlap
+                # print(self.similarity_matrix)
 
         if not self.silent:
             print(f"{time.time()-start_time:6.2f}: Code comparison completed")
@@ -553,7 +559,7 @@ class CopyDetector:
         else:
             self._comparison_loop()
 
-    def get_copied_code_list(self):
+    def get_copied_code_list(self, fp1, fp2, test_sim, ref_sim, slices_test, slices_ref, token_overlap):
         """Get a list of copied code to display on the output report.
         Returns a list of tuples containing the similarity score, the
         test file name, the compare file name, the highlighted test
@@ -570,47 +576,62 @@ class CopyDetector:
             highlighted test code, highlighted reference code, numer of
             overlapping tokens]
         """
-        if len(self.similarity_matrix) == 0:
-            logging.error("Cannot generate code list: no files compared")
-            return []
-        x,y = np.where(self.similarity_matrix[:,:,0] > self.display_t)
-
         code_list = []
-        file_pairs = set()
-        for idx in range(len(x)):
-            test_f = self.test_files[x[idx]]
-            ref_f = self.ref_files[y[idx]]
-            if (ref_f, test_f) in file_pairs:
-                # if comparison is already in report, don't add it again
-                continue
-            file_pairs.add((test_f, ref_f))
+        # if len(self.similarity_matrix) == 0:
+        #     logging.error("Cannot generate code list: no files compared")
+        #     return []
+        # x,y = np.where(self.similarity_matrix[:,:,0] > self.display_t)
 
-            test_sim = self.similarity_matrix[x[idx], y[idx], 0]
-            ref_sim = self.similarity_matrix[x[idx], y[idx], 1]
-            slices_test = self.slice_matrix[x[idx]][y[idx]][0]
-            slices_ref = self.slice_matrix[x[idx]][y[idx]][1]
+        # code_list = []
+        # file_pairs = set()
+        # for idx in range(len(x)):
+        #     test_f = self.test_files[x[idx]]
+        #     ref_f = self.ref_files[y[idx]]
+        #     if (ref_f, test_f) in file_pairs:
+        #         # if comparison is already in report, don't add it again
+        #         continue
+        #     file_pairs.add((test_f, ref_f))
 
-            if self.truncate:
-                truncate = 10
-            else:
-                truncate = -1
-            hl_code_1, _ = highlight_overlap(
-                self.file_data[test_f].raw_code, slices_test,
+        #     test_sim = self.similarity_matrix[x[idx], y[idx], 0]
+        #     ref_sim = self.similarity_matrix[x[idx], y[idx], 1]
+        #     slices_test = self.slice_matrix[x[idx]][y[idx]][0]
+        #     slices_ref = self.slice_matrix[x[idx]][y[idx]][1]
+
+        #     if self.truncate:
+        #         truncate = 10
+        #     else:
+        #         truncate = -1
+        #     hl_code_1, _ = highlight_overlap(
+        #         self.file_data[test_f].raw_code, slices_test,
+        #         "<span class='highlight-red'>", "</span>",
+        #         truncate=truncate, escape_html=True)
+        #     hl_code_2, _ = highlight_overlap(
+        #         self.file_data[ref_f].raw_code, slices_ref,
+        #         "<span class='highlight-green'>", "</span>",
+        #         truncate=truncate, escape_html=True)
+        #     overlap = self.token_overlap_matrix[x[idx], y[idx]]
+
+        #     code_list.append([test_sim, ref_sim, test_f, ref_f,
+        #                       hl_code_1, hl_code_2, overlap])
+        
+
+        hl_code_1, _ = highlight_overlap(
+                fp1.raw_code, slices_test,
                 "<span class='highlight-red'>", "</span>",
                 truncate=truncate, escape_html=True)
-            hl_code_2, _ = highlight_overlap(
-                self.file_data[ref_f].raw_code, slices_ref,
-                "<span class='highlight-green'>", "</span>",
-                truncate=truncate, escape_html=True)
-            overlap = self.token_overlap_matrix[x[idx], y[idx]]
+        hl_code_2, _ = highlight_overlap(
+            fp2.raw_code, slices_ref,
+            "<span class='highlight-green'>", "</span>",
+            truncate=truncate, escape_html=True)
+        overlap = token_overlap
 
-            code_list.append([test_sim, ref_sim, test_f, ref_f,
-                              hl_code_1, hl_code_2, overlap])
+        code_list.append([test_sim, ref_sim, "", "",
+                            hl_code_1, hl_code_2, overlap])
 
         code_list.sort(key=lambda x: -x[0])
         return code_list
 
-    def generate_html_report(self, output_mode="save"):
+    def generate_html_report(fp1, fp2, test_sim, ref_sim, slices_test, slices_ref, token_overlap):
         """Generates an html report listing all files with similarity
         above the display_threshold, with the copied code segments
         highlighted.
@@ -622,46 +643,62 @@ class CopyDetector:
             by self.out_file. If "return", the output HTML will be
             directly returned by this function.
         """
-        if len(self.similarity_matrix) == 0:
-            logging.error("Cannot generate report: no files compared")
-            return
+        output_mode="return"
+        def get_copied_code_list(fp1, fp2, test_sim, ref_sim, slices_test, slices_ref, token_overlap):
+            code_list = []
+            hl_code_1, _ = highlight_overlap(
+                fp1.raw_code, slices_test,
+                "<span class='highlight-red'>", "</span>",
+                truncate=10, escape_html=True)
+            hl_code_2, _ = highlight_overlap(
+                fp2.raw_code, slices_ref,
+                "<span class='highlight-green'>", "</span>",
+                truncate=10, escape_html=True)
+            overlap = token_overlap
 
-        code_list = self.get_copied_code_list()
+            code_list.append([test_sim, ref_sim, "", "",
+                                hl_code_1, hl_code_2, overlap])
+
+            code_list.sort(key=lambda x: -x[0])
+            return code_list
+        # if len(self.similarity_matrix) == 0:
+        #     logging.error("Cannot generate report: no files compared")
+        #     return
+
+        code_list = get_copied_code_list(fp1, fp2, test_sim, ref_sim, slices_test, slices_ref, token_overlap)
         data_dir = pkg_resources.resource_filename('copydetect', 'data/')
 
-        plot_mtx = np.copy(self.similarity_matrix[:,:,0])
-        plot_mtx[plot_mtx == -1] = np.nan
-        plt.imshow(plot_mtx)
-        plt.colorbar()
-        plt.tight_layout()
-        sim_mtx_buffer = io.BytesIO()
-        plt.savefig(sim_mtx_buffer)
-        sim_mtx_buffer.seek(0)
-        sim_mtx_base64 = base64.b64encode(sim_mtx_buffer.read()).decode()
-        plt.close()
+        # plot_mtx = np.copy(self.similarity_matrix[:,:,0])
+        # plot_mtx[plot_mtx == -1] = np.nan
+        # plt.imshow(plot_mtx)
+        # plt.colorbar()
+        # plt.tight_layout()
+        # sim_mtx_buffer = io.BytesIO()
+        # plt.savefig(sim_mtx_buffer)
+        # sim_mtx_buffer.seek(0)
+        # sim_mtx_base64 = base64.b64encode(sim_mtx_buffer.read()).decode()
+        # plt.close()
 
-        scores=self.similarity_matrix[:,:,0][self.similarity_matrix[:,:,0]!=-1]
-        plt.hist(scores, bins=20)
-        plt.tight_layout()
-        sim_hist_buffer = io.BytesIO()
-        plt.savefig(sim_hist_buffer)
-        sim_hist_buffer.seek(0)
-        sim_hist_base64 = base64.b64encode(sim_hist_buffer.read()).decode()
-        plt.close()
+        # scores=self.similarity_matrix[:,:,0][self.similarity_matrix[:,:,0]!=-1]
+        # plt.hist(scores, bins=20)
+        # plt.tight_layout()
+        # sim_hist_buffer = io.BytesIO()
+        # plt.savefig(sim_hist_buffer)
+        # sim_hist_buffer.seek(0)
+        # sim_hist_base64 = base64.b64encode(sim_hist_buffer.read()).decode()
+        # plt.close()
 
         # render template with jinja and save as html
         with open(data_dir + "report.html") as template_fp:
             template = Template(template_fp.read())
 
-        flagged = self.similarity_matrix[:,:,0] > self.display_t
-        flagged_file_count = np.sum(np.any(flagged, axis=1))
+        # flagged = self.similarity_matrix[:,:,0] > self.display_t
+        # flagged_file_count = np.sum(np.any(flagged, axis=1))
 
-        output = template.render(test_count=len(self.test_files),
-                                 compare_count=len(self.ref_files),
-                                 flagged_file_count=flagged_file_count,
-                                 code_list=code_list,
-                                 sim_mtx_base64=sim_mtx_base64,
-                                 sim_hist_base64=sim_hist_base64)
+        output = template.render(test_count=1,
+                                 compare_count=1,
+                                 flagged_file_count=1,
+                                 code_list=code_list)
 
         if output_mode == "save":
             with open(self.out_file, "w") as report_f:
